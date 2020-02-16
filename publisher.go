@@ -77,14 +77,36 @@ func (streamer *kinesisStreamer) Push(ctx context.Context) error {
 			})
 		}
 		delete(streamer.commits, pk)
+
+		if err := streamer.putRecords(ctx, entries); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (streamer *kinesisStreamer) putRecords(ctx context.Context, entries []*kinesis.PutRecordsRequestEntry) error {
+
+	const chunkSize = 300
+	var divided [][]*kinesis.PutRecordsRequestEntry
+
+	for i := 0; i < len(entries); i += chunkSize {
+		end := i + chunkSize
+		if end > len(entries) {
+			end = len(entries)
+		}
+		divided = append(divided, entries[i:end])
+	}
+
+	for _, chunk := range divided {
 		if _, err := streamer.stream.PutRecordsWithContext(ctx, &kinesis.PutRecordsInput{
-			Records:    entries,
+			Records:    chunk,
 			StreamName: aws.String(streamer.streamName),
 		}); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
